@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -13,6 +14,7 @@ import (
 
 type MongoDatabase struct {
 	client *mongo.Client
+	lock   sync.Mutex
 }
 
 const (
@@ -26,10 +28,13 @@ func NewMongoDatabase() *MongoDatabase {
 	if err != nil {
 		log.Panic(err)
 	}
-	return &MongoDatabase{client: client}
+	return &MongoDatabase{client: client, lock: sync.Mutex{}}
 }
 
 func (db *MongoDatabase) GetObject(collectionName, key string, object any) error {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
 	collection := db.client.Database(databaseName).Collection(collectionName)
 
 	var result bson.M
@@ -55,6 +60,9 @@ func (db *MongoDatabase) GetObject(collectionName, key string, object any) error
 }
 
 func (db *MongoDatabase) SaveObject(collectionName, key string, object any) error {
+	db.lock.Lock()
+	defer db.lock.Unlock()
+
 	collection := db.client.Database(databaseName).Collection(collectionName)
 
 	result := struct {

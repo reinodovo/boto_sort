@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -11,17 +12,24 @@ import (
 
 type SortRequests map[int64]int
 
-type SortingResult struct {
-	chatId      int64
-	sortedItems []string
+type SortedItem struct {
+	chatId   int64
+	position int
+	item     string
+}
+
+type FinishedSorting struct {
+	chatId int64
+	items  []string
 }
 
 type TelegramBot struct {
-	api             *tgbotapi.BotAPI
-	comparator      *Comparator
-	store           *store.Store
-	sortingResults  chan SortingResult
-	currentSortings map[int64]bool
+	api              *tgbotapi.BotAPI
+	comparator       *Comparator
+	store            *store.Store
+	sortedItems      chan SortedItem
+	finishedSortings chan FinishedSorting
+	currentSortings  map[int64]bool
 }
 
 func NewTelegramBot(store *store.Store) *TelegramBot {
@@ -31,10 +39,11 @@ func NewTelegramBot(store *store.Store) *TelegramBot {
 	}
 
 	bot := &TelegramBot{
-		api:             api,
-		store:           store,
-		currentSortings: make(map[int64]bool),
-		sortingResults:  make(chan SortingResult),
+		api:              api,
+		store:            store,
+		currentSortings:  make(map[int64]bool),
+		sortedItems:      make(chan SortedItem),
+		finishedSortings: make(chan FinishedSorting),
 	}
 	bot.comparator = NewComparator(bot.createPoll, store)
 	go bot.comparator.Start()
@@ -47,20 +56,49 @@ func (bot *TelegramBot) Start() error {
 	u.Timeout = 60
 	updates := bot.api.GetUpdatesChan(u)
 
-	go bot.handleSortings()
+	go bot.handleSortedItem()
+	go bot.handleSortingFinished()
 	bot.handleUpdates(updates)
 	return nil
 }
 
-func (bot *TelegramBot) handleSortings() {
-	for result := range bot.sortingResults {
-		_, err := bot.SendMessage(result.chatId, strings.Join(result.sortedItems, "\n"), nil)
+func (bot *TelegramBot) handleSortingFinished() {
+	for result := range bot.finishedSortings {
+		message := ""
+		for index, item := range result.items {
+			message += fmt.Sprintf("<b>%v.</b> %v\n", index+1, item)
+		}
+		_, err := bot.SendMessage(result.chatId, message, nil)
 		if err != nil {
 			log.Println(err)
 		}
 		err = bot.store.SaveSorting(result.chatId, store.NewSorting(result.chatId))
 		if err != nil {
 			log.Println(err)
+		}
+	}
+}
+
+func (bot *TelegramBot) handleSortedItem() {
+	for result := range bot.sortedItems {
+		sorting, err := bot.store.GetSorting(result.chatId)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		if result.position > 2 && (sorting.LastSortedPosition == -1 || result.position < sorting.LastSortedPosition) {
+			message := fmt.Sprintf("<b>%v.</b> %v", result.position, result.item)
+			_, err := bot.SendMessage(result.chatId, message, nil)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+
+			sorting.LastSortedPosition = result.position
+			err = bot.store.SaveSorting(result.chatId, sorting)
+			if err != nil {
+				log.Println(err)
+			}
 		}
 	}
 }
@@ -96,6 +134,7 @@ func (bot *TelegramBot) handleUpdate(update tgbotapi.Update) error {
 			tokens := strings.Split(data, "_")
 			id := tokens[1]
 			option := tokens[2]
+
 			err = bot.comparator.receiveVote(chatId, id, update.CallbackQuery.From.ID, option)
 			if err != nil {
 				return err

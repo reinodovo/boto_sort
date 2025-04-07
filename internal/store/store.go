@@ -15,11 +15,12 @@ type CompareResult struct {
 }
 
 type Sorting struct {
-	ChatId         int64
-	Items          []string
-	Users          map[int64]string
-	CompareResults map[string]CompareResult
-	LastMessageId  int
+	ChatId             int64
+	Items              []string
+	LastSortedPosition int
+	Users              map[int64]string
+	CompareResults     map[string]CompareResult
+	LastMessageId      int
 }
 
 type Store struct {
@@ -32,9 +33,10 @@ func NewStore(db database.Database) *Store {
 
 func NewSorting(chatId int64) Sorting {
 	return Sorting{
-		ChatId:         chatId,
-		Users:          make(map[int64]string),
-		CompareResults: make(map[string]CompareResult),
+		ChatId:             chatId,
+		Users:              make(map[int64]string),
+		CompareResults:     make(map[string]CompareResult),
+		LastSortedPosition: -1,
 	}
 }
 

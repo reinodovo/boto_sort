@@ -1,36 +1,47 @@
 package bot
 
-func mergeSort(items []string, c *Comparator, chatId int64, result chan SortingResult) {
-	sortedItems := mergeSortRecursive(items, c, chatId)
-	result <- SortingResult{
-		chatId:      chatId,
-		sortedItems: sortedItems,
+func heapify(arr []string, n, i int, c *Comparator, chatId int64) {
+	largest := i
+	left := 2*i + 1
+	right := 2*i + 2
+
+	if left < n && c.Compare(arr[largest], arr[left], chatId) < 0 {
+		largest = left
+	}
+	if right < n && c.Compare(arr[largest], arr[right], chatId) < 0 {
+		largest = right
+	}
+
+	if largest != i {
+		arr[i], arr[largest] = arr[largest], arr[i]
+		heapify(arr, n, largest, c, chatId)
 	}
 }
 
-func mergeSortRecursive(items []string, c *Comparator, chatId int64) []string {
-	if len(items) <= 1 {
-		return items
-	}
-	mid := len(items) / 2
-	left := mergeSortRecursive(items[:mid], c, chatId)
-	right := mergeSortRecursive(items[mid:], c, chatId)
-	return merge(left, right, c, chatId)
-}
+func sort(arr []string, c *Comparator, chatId int64, sortedItem chan SortedItem, finishedSorting chan FinishedSorting) {
+	n := len(arr)
 
-func merge(left, right []string, c *Comparator, chatId int64) []string {
-	result := make([]string, 0, len(left)+len(right))
-	i, j := 0, 0
-	for i < len(left) && j < len(right) {
-		if c.Compare(left[i], right[j], chatId) < 0 {
-			result = append(result, left[i])
-			i++
-		} else {
-			result = append(result, right[j])
-			j++
+	for i := n/2 - 1; i >= 0; i-- {
+		heapify(arr, n, i, c, chatId)
+	}
+
+	for i := n - 1; i > 0; i-- {
+		arr[0], arr[i] = arr[i], arr[0]
+		sortedItem <- SortedItem{
+			chatId:   chatId,
+			position: i + 1,
+			item:     arr[i],
 		}
+		heapify(arr, i, 0, c, chatId)
 	}
-	result = append(result, left[i:]...)
-	result = append(result, right[j:]...)
-	return result
+
+	sortedItem <- SortedItem{
+		chatId:   chatId,
+		position: 0,
+		item:     arr[0],
+	}
+	finishedSorting <- FinishedSorting{
+		chatId: chatId,
+		items:  arr,
+	}
 }

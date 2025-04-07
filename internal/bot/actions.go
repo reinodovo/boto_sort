@@ -59,7 +59,8 @@ func pollKeyboard(sorting store.Sorting, id string) tgbotapi.InlineKeyboardMarku
 	}
 	aButton := tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%v - %v votes", a, aVotes), fmt.Sprintf("poll_%v_a", id))
 	bButton := tgbotapi.NewInlineKeyboardButtonData(fmt.Sprintf("%v - %v votes", b, bVotes), fmt.Sprintf("poll_%v_b", id))
-	return tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(aButton), tgbotapi.NewInlineKeyboardRow(bButton))
+	revokeButton := tgbotapi.NewInlineKeyboardButtonData("Revoke Vote", fmt.Sprintf("poll_%v_revoke", id))
+	return tgbotapi.NewInlineKeyboardMarkup(tgbotapi.NewInlineKeyboardRow(aButton), tgbotapi.NewInlineKeyboardRow(bButton), tgbotapi.NewInlineKeyboardRow(revokeButton))
 }
 
 func (bot *TelegramBot) newSorting(chatId int64) error {
@@ -135,7 +136,7 @@ func (bot *TelegramBot) createPoll(req CompareRequest) error {
 
 func (bot *TelegramBot) startSort(sorting store.Sorting) {
 	bot.currentSortings[sorting.ChatId] = true
-	go mergeSort(sorting.Items, bot.comparator, sorting.ChatId, bot.sortingResults)
+	go sort(sorting.Items, bot.comparator, sorting.ChatId, bot.sortedItems, bot.finishedSortings)
 }
 
 func (bot *TelegramBot) assertSorting(sorting store.Sorting) {

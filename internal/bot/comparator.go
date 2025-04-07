@@ -37,6 +37,12 @@ func (c *Comparator) Compare(a, b string, chatId int64) int {
 			c.requests <- CompareRequest{id: results.Id, a: a, b: b, response: resp, chatId: chatId, alreadySent: true}
 			return <-resp
 		}
+		if results.A == b && results.B == a {
+			voteResult, unanimous := c.getVoteResult(sorting.Users, results.Votes)
+			if unanimous {
+				return -voteResult
+			}
+		}
 	}
 
 	id := uuid.New().String()
@@ -46,7 +52,10 @@ func (c *Comparator) Compare(a, b string, chatId int64) int {
 		B:     b,
 		Votes: make(map[int64]int),
 	}
-	c.store.SaveSorting(chatId, sorting)
+	err := c.store.SaveSorting(chatId, sorting)
+	if err != nil {
+		log.Println(err)
+	}
 
 	c.requests <- CompareRequest{id: id, a: a, b: b, response: resp, chatId: chatId, alreadySent: false}
 	return <-resp
@@ -72,7 +81,12 @@ func (c *Comparator) receiveVote(chatId int64, requestId string, userId int64, o
 		return nil
 	}
 
-	sorting.CompareResults[requestId].Votes[userId] = result
+	if option == "revoke" {
+		delete(sorting.CompareResults[requestId].Votes, userId)
+	} else {
+		sorting.CompareResults[requestId].Votes[userId] = result
+	}
+
 	err = c.store.SaveSorting(chatId, sorting)
 	if err != nil {
 		return err
